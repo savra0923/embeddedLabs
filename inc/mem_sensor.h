@@ -11,14 +11,21 @@ extern "C" {
 
 #define MEM_SENSOR_NAME "mem_sensor"
 
-typedef struct {
-    int id;
-    float value;
-} mem_sensor_data_t;
+#define PROC_MEMINFO "/proc/meminfo"
+#define OUTPUT_DIR   "/tmp/sysmon"
+#define OUTPUT_FILE  "/tmp/sysmon/mem.dat"
+#define INTERVAL     5
 
-void mem_sensor_init(void);
-void mem_sensor_update(void);
-float mem_sensor_read(void);
+typedef struct {
+    size_t memTotal;
+    size_t memFree;
+    size_t memAvailable;
+    size_t SwapTotal;
+    size_t SwapFree;
+} mem_info_t;
+
+int read_mem_info(mem_info_t *info);
+int write_mem_info(const mem_info_t *info);
 
 #ifdef __cplusplus
 }
