@@ -1,18 +1,16 @@
-CC ?= gcc
+CC = gcc
 CFLAGS = -Wall -Wextra -g
 LDLIBS = -lpthread -lrt
 
-TARGET = src/mem_sensor
+all: mem_sensor
 
-all: $(TARGET)
+mem_sensor: src/mem_sensor.o
+	$(CC) $(CFLAGS) -o $@ $^ $(LDLIBS)
 
-%.o: %.c
+src/mem_sensor.o: src/mem_sensor.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
-$(TARGET): $(TARGET).o
-	$(CC) $^ $(LDLIBS) -o $@
-
 clean:
-	rm -f src/*.o $(TARGET)
+	rm -f src/*.o mem_sensor
 
 .PHONY: all clean
