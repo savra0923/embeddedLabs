@@ -54,16 +54,6 @@ int write_pid_count(int count)
 
 int main(void)
 {
-    //int pid_count = read_pid_count();
     write_pid_count(read_pid_count());
-    // if (pid_count >= 0) 
-    // {
-    //     printf("Number of running processes: %d\n", pid_count);
-    // } 
-    // else 
-    // {
-    //     fprintf(stderr, "Failed to read process count.\n");
-    //     return 1;
-    // }
 	return 0;
 }
