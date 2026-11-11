@@ -6,9 +6,11 @@
 #include <stddef.h>
 #include "mem_sensor.h"
 
-int read_mem_info(mem_info_t *info) {
+int read_mem_info(mem_info_t *info) 
+{
     FILE *fp = fopen(PROC_MEMINFO, "r");
-    if (fp == NULL) {
+    if (fp == NULL) 
+    {
         perror("fopen /proc/meminfo");
         return -1;
     }
@@ -16,7 +18,8 @@ int read_mem_info(mem_info_t *info) {
     char line[256];
     memset(info, 0, sizeof(mem_info_t));
 
-    while (fgets(line, sizeof(line), fp) != NULL) {
+    while (fgets(line, sizeof(line), fp) != NULL) 
+    {
         if (sscanf(line, "MemTotal: %zu", &info->memTotal) == 1)
             continue;
         if (sscanf(line, "MemFree: %zu", &info->memFree) == 1)
@@ -33,9 +36,11 @@ int read_mem_info(mem_info_t *info) {
     return 0;
 }
 
-int write_mem_info(const mem_info_t *info) {
+int write_mem_info(const mem_info_t *info)
+{
     FILE *fw = fopen(OUTPUT_FILE, "w");
-    if (fw == NULL) {
+    if (fw == NULL) 
+    {
         perror("fopen mem.dat");
         return -1;
     }
@@ -60,17 +65,17 @@ int main(void)
         return -1;
     }
 
-    while (1) {
-        if (read_mem_info(&info) == 0) {
-            if (write_mem_info(&info) != 0) {
+    while (1)
+    {
+        if (read_mem_info(&info) == 0) 
+        {
+            if (write_mem_info(&info) != 0) 
                 fprintf(stderr, "Failed to write memory info\n");
-            }
-        } else {
+        } 
+        else 
             fprintf(stderr, "Failed to read memory info\n");
-        }
         sleep(INTERVAL);
     }
 	
-
 	return 0;
 }
