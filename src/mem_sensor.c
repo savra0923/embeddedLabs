@@ -59,12 +59,6 @@ int main(void)
 {
     mem_info_t info;
 
-    if (mkdir("/tmp/sysmon", 0755) == -1 && errno != EEXIST)
-    {
-        perror("mkdir");
-        return -1;
-    }
-
     while (1)
     {
         if (read_mem_info(&info) == 0) 

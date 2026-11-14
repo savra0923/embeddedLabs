@@ -54,6 +54,11 @@ int write_pid_count(int count)
 
 int main(void)
 {
-    write_pid_count(read_pid_count());
+    while (1)
+    {
+        write_pid_count(read_pid_count());
+        sleep(INTERVAL);
+    }
+    
 	return 0;
 }

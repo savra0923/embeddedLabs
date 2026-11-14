@@ -17,7 +17,7 @@ int read_cpu_info(cpu_info_t *info)
 
     char line[256];
     memset(info, 0, sizeof(cpu_info_t));
-    
+
     while (fgets(line, sizeof(line), fp) != NULL) 
     {
         if (sscanf(line, "%lf %lf %lf", &info->cpu1min, &info->cpu5min, &info->cpu15min) == 3)
@@ -49,12 +49,6 @@ int main(void)
 {
     cpu_info_t info;
 
-    if (mkdir("/tmp/sysmon", 0755) == -1 && errno != EEXIST)
-    {
-        perror("mkdir");
-        return -1;
-    }
-
     while (1)
     {
         if (read_cpu_info(&info) == 0) 
@@ -64,7 +58,7 @@ int main(void)
         } 
         else 
             fprintf(stderr, "Failed to read CPU info\n");
-        sleep(5);
+        sleep(INTERVAL);
     }
 	
 	return 0;
