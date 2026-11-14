@@ -47,7 +47,6 @@ int read_mem_data(const char *file_path, mem_info_t *info)
     }
 
     fclose(fp);
-
     return 0;
 }
 
@@ -74,12 +73,6 @@ int read_cpu_data(const char *file_path, cpu_info_t *info)
     }
 
     fclose(fp);
-
-    fprintf(stdout, "CPU Load Averages:\n");
-    fprintf(stdout, "1 min:  %.2f\n", info->cpu1min);
-    fprintf(stdout, "5 min:  %.2f\n", info->cpu5min);
-    fprintf(stdout, "15 min: %.2f\n", info->cpu15min);
-
     return 0;
 }
 
@@ -102,27 +95,21 @@ int read_proc_data(const char *file_path, int *pid_count)
     }
 
     fclose(fp);
-
-    fprintf(stdout, "Number of running processes: %d\n", *pid_count);
-
     return 0;
 }
 
 int print_system_info(mem_info_t *mem_info, cpu_info_t *cpu_info, int *pid_count)
 {
-    fprintf(stdout, "Memory Information:\n");
+    fprintf(stdout, "\nSystem Information:\n");
     fprintf(stdout, "MemTotal:     %zu kB\n", mem_info->memTotal);
     fprintf(stdout, "MemFree:      %zu kB\n", mem_info->memFree);
     fprintf(stdout, "MemAvailable: %zu kB\n", mem_info->memAvailable);
     fprintf(stdout, "SwapTotal:    %zu kB\n", mem_info->SwapTotal);
     fprintf(stdout, "SwapFree:     %zu kB\n", mem_info->SwapFree);
-
-    fprintf(stdout, "\nCPU Load Averages:\n");
     fprintf(stdout, "1 min:  %.2f\n", cpu_info->cpu1min);
     fprintf(stdout, "5 min:  %.2f\n", cpu_info->cpu5min);
     fprintf(stdout, "15 min: %.2f\n", cpu_info->cpu15min); 
-
-    fprintf(stdout, "\nNumber of running processes: %d\n", *pid_count);
+    fprintf(stdout, "Number of running processes: %d\n", *pid_count);
 
     return 0;
 }
@@ -135,10 +122,15 @@ int main(void)
     cpu_info_t cpu_info;
     int pid_count = 0;
 
-    read_mem_data(MEM_FILE, &mem_info);
-    read_cpu_data(CPU_FILE, &cpu_info);
-    read_proc_data(PROC_FILE, &pid_count);
+    while (1) {
+        read_mem_data(MEM_FILE, &mem_info);
+        read_cpu_data(CPU_FILE, &cpu_info);
+        read_proc_data(PROC_FILE, &pid_count);
+        sleep(READ_INTERVAL);
 
-    print_system_info(&mem_info, &cpu_info, &pid_count);
+        print_system_info(&mem_info, &cpu_info, &pid_count);
+        sleep(PRINT_INTERVAL);
+    }
+
 	return 0;
 }
