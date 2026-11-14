@@ -13,7 +13,7 @@ extern "C" {
 
 #define PROC_INFO    "/proc"
 #define OUTPUT_DIR   "/tmp/sysmon"
-#define OUTPUT_FILE  "/tmp/sysmon/proc.dat"
+#define OUTPUT_PROC_FILE  "/tmp/sysmon/proc.dat"
 #define INTERVAL     5
 
 

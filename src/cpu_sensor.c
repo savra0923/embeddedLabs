@@ -30,7 +30,7 @@ int read_cpu_info(cpu_info_t *info)
 
 int write_cpu_info(const cpu_info_t *info)
 {
-    FILE *fw = fopen(OUTPUT_FILE, "w");
+    FILE *fw = fopen(OUTPUT_CPU_FILE, "w");
     if (fw == NULL) 
     {
         perror("fopen cpu.dat");

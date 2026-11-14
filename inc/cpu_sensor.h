@@ -13,7 +13,7 @@ extern "C" {
 
 #define PROC_CPUINFO "/proc/loadavg"
 #define OUTPUT_DIR   "/tmp/sysmon"
-#define OUTPUT_FILE  "/tmp/sysmon/cpu.dat"
+#define OUTPUT_CPU_FILE  "/tmp/sysmon/cpu.dat"
 #define INTERVAL     5
 
 typedef struct {

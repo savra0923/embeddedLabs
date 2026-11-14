@@ -1,6 +1,11 @@
 #include <dirent.h>
 #include <stdio.h>
 #include <ctype.h>
+#include <string.h>
+#include <unistd.h>
+#include <errno.h>
+#include <sys/stat.h>
+#include <stddef.h>
 #include "proc_sensor.h"
 
 int read_pid_count(void) 
@@ -39,7 +44,7 @@ int read_pid_count(void)
 
 int write_pid_count(int count) 
 {
-    FILE *fw = fopen(OUTPUT_FILE, "w");
+    FILE *fw = fopen(OUTPUT_PROC_FILE, "w");
     if (fw == NULL) 
     {
         perror("fopen proc.dat");

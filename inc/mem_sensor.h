@@ -13,7 +13,7 @@ extern "C" {
 
 #define PROC_MEMINFO "/proc/meminfo"
 #define OUTPUT_DIR   "/tmp/sysmon"
-#define OUTPUT_FILE  "/tmp/sysmon/mem.dat"
+#define OUTPUT_MEM_FILE  "/tmp/sysmon/mem.dat"
 #define INTERVAL     5
 
 typedef struct {

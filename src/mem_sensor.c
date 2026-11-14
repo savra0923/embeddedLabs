@@ -38,7 +38,7 @@ int read_mem_info(mem_info_t *info)
 
 int write_mem_info(const mem_info_t *info)
 {
-    FILE *fw = fopen(OUTPUT_FILE, "w");
+    FILE *fw = fopen(OUTPUT_MEM_FILE, "w");
     if (fw == NULL) 
     {
         perror("fopen mem.dat");
