@@ -4,6 +4,7 @@
 #include <errno.h>
 #include <sys/stat.h>
 #include <stddef.h>
+#include <sys/types.h>
 #include "sysmond.h"
 #include "mem_sensor.h"
 #include "cpu_sensor.h"
@@ -114,6 +115,35 @@ int print_system_info(mem_info_t *mem_info, cpu_info_t *cpu_info, int *pid_count
     return 0;
 }
 
+pid_t start_process(const char *program)
+{
+    pid_t pid = fork();
+
+    if (pid < 0)
+    {
+        perror("fork");
+        return -1;
+    }
+
+    if (pid == 0)
+    {
+        char *const args[] = {
+            (char *)program,
+            NULL
+        };
+
+        char *const env[] = { NULL };
+
+        execve(program, args, env);
+
+        // Reached only if execve fails
+        perror("execve");
+    }
+
+    // Parent returns the child's PID
+    return pid;
+}
+
 int main(void)
 {
     make_output_dir();
@@ -121,6 +151,26 @@ int main(void)
     mem_info_t mem_info;
     cpu_info_t cpu_info;
     int pid_count = 0;
+
+    pid_t cpu_pid;
+    pid_t mem_pid;
+    pid_t proc_pid;
+
+    cpu_pid = start_process("./bin/cpu_sensor");
+    if (cpu_pid < 0)
+        printf("Failed to start CPU sensor\n");
+
+    mem_pid = start_process("./bin/mem_sensor");
+    if (mem_pid < 0)
+        printf("Failed to start Memory sensor\n");
+
+    proc_pid = start_process("./bin/proc_sensor");
+    if (proc_pid < 0)
+        printf("Failed to start Process sensor\n");
+
+    printf("Started CPU sensor: PID %d\n", cpu_pid);
+    printf("Started Memory sensor: PID %d\n", mem_pid);
+    printf("Started Process sensor: PID %d\n", proc_pid);
 
     while (1) {
         read_mem_data(MEM_FILE, &mem_info);
