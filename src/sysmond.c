@@ -4,7 +4,8 @@
 #include <errno.h>
 #include <sys/stat.h>
 #include <stddef.h>
-#include <sys/types.h>
+#include <sys/wait.h>
+#include <signal.h>
 #include "sysmond.h"
 #include "mem_sensor.h"
 #include "cpu_sensor.h"
@@ -115,6 +116,26 @@ int print_system_info(mem_info_t *mem_info, cpu_info_t *cpu_info, int *pid_count
     return 0;
 }
 
+void sigchld_handler(int signum)
+{
+    int status;
+    pid_t pid;
+
+    while ((pid = waitpid(-1, &status, WNOHANG)) > 0)
+    {
+        if (WIFEXITED(status))
+        {
+            printf("Process %d exited with status %d\n",
+                   pid, WEXITSTATUS(status));
+        }
+        else if (WIFSIGNALED(status))
+        {
+            printf("Process %d was killed by signal %d\n",
+                   pid, WTERMSIG(status));
+        }
+    }
+}
+
 pid_t start_process(const char *program)
 {
     pid_t pid = fork();
@@ -155,6 +176,18 @@ int main(void)
     pid_t cpu_pid;
     pid_t mem_pid;
     pid_t proc_pid;
+
+    struct sigaction sa;
+
+    sa.sa_handler = sigchld_handler;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = SA_RESTART | SA_NOCLDSTOP;
+
+    if (sigaction(SIGCHLD, &sa, NULL) == -1)
+    {
+        perror("sigaction");
+        return -1;
+    }
 
     cpu_pid = start_process("./bin/cpu_sensor");
     if (cpu_pid < 0)
