@@ -6,6 +6,7 @@
 #include <stddef.h>
 #include <sys/wait.h>
 #include <signal.h>
+#include <time.h>
 #include "sysmond.h"
 #include "mem_sensor.h"
 #include "cpu_sensor.h"
@@ -206,6 +207,15 @@ int main(void)
     printf("Started Process sensor: PID %d\n", proc_pid);
 
     while (1) {
+        time_t now = time(NULL);
+        struct tm *current_time = localtime(&now);
+
+        char time_string[30];
+
+        strftime(time_string, sizeof(time_string),
+                "%Y-%m-%d %H:%M:%S", current_time);
+
+        printf("[%s] ", time_string);
         read_mem_data(MEM_FILE, &mem_info);
         read_cpu_data(CPU_FILE, &cpu_info);
         read_proc_data(PROC_FILE, &pid_count);
