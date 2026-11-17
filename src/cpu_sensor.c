@@ -1,64 +1,49 @@
 #include <stdio.h>
-#include <string.h>
 #include <unistd.h>
-#include <errno.h>
-#include <sys/stat.h>
 #include <stddef.h>
+#include <pthread.h>
+#include "sysmond.h"
 #include "cpu_sensor.h"
 
-int read_cpu_info(cpu_info_t *info) 
+
+
+void *cpu_sensor_thread(void *arg)
 {
-    FILE *fp = fopen(PROC_CPUINFO, "r");
-    if (fp == NULL) 
-    {
-        perror("fopen /proc/loadavg");
-        return -1;
-    }
-
-    char line[256];
-    memset(info, 0, sizeof(cpu_info_t));
-
-    while (fgets(line, sizeof(line), fp) != NULL) 
-    {
-        if (sscanf(line, "%lf %lf %lf", &info->cpu1min, &info->cpu5min, &info->cpu15min) == 3)
-        continue; 
-    }
-
-    fclose(fp);
-    return 0;
-}
-
-int write_cpu_info(const cpu_info_t *info)
-{
-    FILE *fw = fopen(OUTPUT_CPU_FILE, "w");
-    if (fw == NULL) 
-    {
-        perror("fopen cpu.dat");
-        return -1;
-    }
-
-    fprintf(fw, "1 min:  %.2f\n", info->cpu1min);
-    fprintf(fw, "5 min:  %.2f\n", info->cpu5min);
-    fprintf(fw, "15 min: %.2f\n", info->cpu15min);
-
-    fclose(fw);
-    return 0;
-}
-
-int main(void)
-{
-    cpu_info_t info;
+    SystemState *state = (SystemState *)arg;
 
     while (1)
     {
-        if (read_cpu_info(&info) == 0) 
+        FILE *fp = fopen(PROC_CPUINFO, "r");
+
+        if (fp == NULL)
         {
-            if (write_cpu_info(&info) != 0) 
-                fprintf(stderr, "Failed to write CPU info\n");
-        } 
-        else 
-            fprintf(stderr, "Failed to read CPU info\n");
-        sleep(INTERVAL);
+            perror("fopen /proc/loadavg");
+            sleep(INTERVAL);
+            continue;
+        }
+
+        double load1 = 0.0;
+        double load5 = 0.0;
+        double load15 = 0.0;
+
+        fscanf(fp, "%lf %lf %lf", &load1, &load5, &load15);
+
+        fclose(fp);
+
+        // Update shared state
+        pthread_mutex_lock(&state->lock);
+
+        state->load1 = load1;
+        state->load5 = load5;
+        state->load15 = load15;
+
+        if (state->load1 > 1.50)
+            pthread_cond_signal(&state->alert_cond);
+        
+
+        pthread_mutex_unlock(&state->lock);
+
+        //sleep(INTERVAL);
     }
 	
 	return 0;

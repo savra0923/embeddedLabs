@@ -2,74 +2,59 @@
 #include <string.h>
 #include <unistd.h>
 #include <errno.h>
-#include <sys/stat.h>
+#include <pthread.h>
 #include <stddef.h>
+#include "sysmond.h"
 #include "mem_sensor.h"
 
-int read_mem_info(mem_info_t *info) 
+void *mem_sensor_thread(void *arg)
 {
-    FILE *fp = fopen(PROC_MEMINFO, "r");
-    if (fp == NULL) 
-    {
-        perror("fopen /proc/meminfo");
-        return -1;
-    }
-
-    char line[256];
-    memset(info, 0, sizeof(mem_info_t));
-
-    while (fgets(line, sizeof(line), fp) != NULL) 
-    {
-        if (sscanf(line, "MemTotal: %zu", &info->memTotal) == 1)
-            continue;
-        if (sscanf(line, "MemFree: %zu", &info->memFree) == 1)
-            continue;
-        if (sscanf(line, "MemAvailable: %zu", &info->memAvailable) == 1)
-            continue;
-        if (sscanf(line, "SwapTotal: %zu", &info->SwapTotal) == 1)
-            continue;
-        if (sscanf(line, "SwapFree: %zu", &info->SwapFree) == 1)
-            continue;
-    }
-
-    fclose(fp);
-    return 0;
-}
-
-int write_mem_info(const mem_info_t *info)
-{
-    FILE *fw = fopen(OUTPUT_MEM_FILE, "w");
-    if (fw == NULL) 
-    {
-        perror("fopen mem.dat");
-        return -1;
-    }
-
-    fprintf(fw, "MemTotal:     %zu kB\n", info->memTotal);
-    fprintf(fw, "MemFree:      %zu kB\n", info->memFree);
-    fprintf(fw, "MemAvailable: %zu kB\n", info->memAvailable);
-    fprintf(fw, "SwapTotal:    %zu kB\n", info->SwapTotal);
-    fprintf(fw, "SwapFree:     %zu kB\n", info->SwapFree);
-
-    fclose(fw);
-    return 0;
-}
-
-int main(void)
-{
-    mem_info_t info;
+    SystemState *state = (SystemState *)arg;
 
     while (1)
     {
-        if (read_mem_info(&info) == 0) 
+        FILE *fp = fopen(PROC_MEMINFO, "r");
+
+        if (fp == NULL)
         {
-            if (write_mem_info(&info) != 0) 
-                fprintf(stderr, "Failed to write memory info\n");
-        } 
-        else 
-            fprintf(stderr, "Failed to read memory info\n");
-        sleep(INTERVAL);
+            perror("fopen /proc/meminfo");
+            sleep(INTERVAL);
+            continue;
+        }
+
+        char line[256];
+
+        // Temporary local variables
+        long mem_total = 0;
+        long mem_free = 0;
+        long mem_avail = 0;
+        long swap_total = 0;
+        long swap_free = 0;
+
+        while (fgets(line, sizeof(line), fp) != NULL)
+        {
+            sscanf(line, "MemTotal: %ld", &mem_total);
+            sscanf(line, "MemFree: %ld", &mem_free);
+            sscanf(line, "MemAvailable: %ld", &mem_avail);
+            sscanf(line, "SwapTotal: %ld", &swap_total);
+            sscanf(line, "SwapFree: %ld", &swap_free);
+        }
+
+        fclose(fp);
+
+        // Update shared state
+        pthread_mutex_lock(&state->lock);
+
+        state->mem_total = mem_total;
+        state->mem_free = mem_free;
+        state->mem_avail = mem_avail;
+        state->swap_total = swap_total;
+        state->swap_free = swap_free;
+
+        pthread_mutex_unlock(&state->lock);
+
+        //sleep(INTERVAL);
     }
-	
-	return 0;
+
+    return NULL;
 }

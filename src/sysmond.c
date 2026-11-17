@@ -7,6 +7,7 @@
 #include <sys/wait.h>
 #include <signal.h>
 #include <time.h>
+#include <pthread.h>
 #include "sysmond.h"
 #include "mem_sensor.h"
 #include "cpu_sensor.h"
@@ -22,208 +23,65 @@ int make_output_dir(void)
     return 0;
 }
 
-int read_mem_data(const char *file_path, mem_info_t *info) 
+void *alert_thread_func(void *arg)
 {
-    FILE *fp = fopen(file_path, "r");
-    if (fp == NULL) 
+    SystemState *state = (SystemState *)arg;
+
+    while (1)
     {
-        fprintf(stderr, "Failed to open %s: %s\n", file_path, strerror(errno));
-        return -1;
+        pthread_mutex_lock(&state->lock);
+
+        pthread_cond_wait(&state->alert_cond, &state->lock);
+
+        fprintf(stderr, "URGENT: High CPU load detected!\n");
+
+        pthread_mutex_unlock(&state->lock);
     }
 
-
-    char line[256];
-    memset(info, 0, sizeof(mem_info_t));
-
-    while (fgets(line, sizeof(line), fp) != NULL) 
-    {
-        if (sscanf(line, "MemTotal: %zu", &info->memTotal) == 1)
-            continue;
-        if (sscanf(line, "MemFree: %zu", &info->memFree) == 1)
-            continue;
-        if (sscanf(line, "MemAvailable: %zu", &info->memAvailable) == 1)
-            continue;
-        if (sscanf(line, "SwapTotal: %zu", &info->SwapTotal) == 1)
-            continue;
-        if (sscanf(line, "SwapFree: %zu", &info->SwapFree) == 1)
-            continue;
-    }
-
-    fclose(fp);
-    return 0;
-}
-
-int read_cpu_data(const char *file_path, cpu_info_t *info) 
-{
-    FILE *fp = fopen(file_path, "r");
-    if (fp == NULL) 
-    {
-        fprintf(stderr, "Failed to open %s: %s\n", file_path, strerror(errno));
-        return -1;
-    }
-
-    char line[256];
-    memset(info, 0, sizeof(cpu_info_t));
-
-    while (fgets(line, sizeof(line), fp) != NULL) 
-    {
-        if (sscanf(line, "1 min: %lf", &info->cpu1min) == 1)
-            continue;
-        if (sscanf(line, "5 min: %lf", &info->cpu5min) == 1)
-            continue;
-        if (sscanf(line, "15 min: %lf", &info->cpu15min) == 1)
-            continue; 
-    }
-
-    fclose(fp);
-    return 0;
-}
-
-int read_proc_data(const char *file_path, int *pid_count) 
-{
-    FILE *fp = fopen(file_path, "r");
-    if (fp == NULL) 
-    {
-        fprintf(stderr, "Failed to open %s: %s\n", file_path, strerror(errno));
-        return -1;
-    }
-
-    char line[256];
-    *pid_count = 0;
-
-    while (fgets(line, sizeof(line), fp) != NULL) 
-    {
-        if (sscanf(line, "Number of running processes: %d", pid_count) == 1)
-            continue;
-    }
-
-    fclose(fp);
-    return 0;
-}
-
-int print_system_info(mem_info_t *mem_info, cpu_info_t *cpu_info, int *pid_count)
-{
-    fprintf(stdout, "\nSystem Information:\n");
-    fprintf(stdout, "MemTotal:     %zu kB\n", mem_info->memTotal);
-    fprintf(stdout, "MemFree:      %zu kB\n", mem_info->memFree);
-    fprintf(stdout, "MemAvailable: %zu kB\n", mem_info->memAvailable);
-    fprintf(stdout, "SwapTotal:    %zu kB\n", mem_info->SwapTotal);
-    fprintf(stdout, "SwapFree:     %zu kB\n", mem_info->SwapFree);
-    fprintf(stdout, "1 min:  %.2f\n", cpu_info->cpu1min);
-    fprintf(stdout, "5 min:  %.2f\n", cpu_info->cpu5min);
-    fprintf(stdout, "15 min: %.2f\n", cpu_info->cpu15min); 
-    fprintf(stdout, "Number of running processes: %d\n", *pid_count);
-
-    return 0;
-}
-
-void sigchld_handler(int signum)
-{
-    int status;
-    pid_t pid;
-
-    while ((pid = waitpid(-1, &status, WNOHANG)) > 0)
-    {
-        if (WIFEXITED(status))
-        {
-            printf("Process %d exited with status %d\n",
-                   pid, WEXITSTATUS(status));
-        }
-        else if (WIFSIGNALED(status))
-        {
-            printf("Process %d was killed by signal %d\n",
-                   pid, WTERMSIG(status));
-        }
-    }
-}
-
-pid_t start_process(const char *program)
-{
-    pid_t pid = fork();
-
-    if (pid < 0)
-    {
-        perror("fork");
-        return -1;
-    }
-
-    if (pid == 0)
-    {
-        char *const args[] = {
-            (char *)program,
-            NULL
-        };
-
-        char *const env[] = { NULL };
-
-        execve(program, args, env);
-
-        // Reached only if execve fails
-        perror("execve");
-    }
-
-    // Parent returns the child's PID
-    return pid;
+    return NULL;
 }
 
 int main(void)
 {
-    make_output_dir();
+    SystemState state;
 
-    mem_info_t mem_info;
-    cpu_info_t cpu_info;
-    int pid_count = 0;
+    pthread_t mem_thread;
+    pthread_t cpu_thread;
+    pthread_t proc_thread;
+    pthread_t alert_thread;
 
-    pid_t cpu_pid;
-    pid_t mem_pid;
-    pid_t proc_pid;
+    pthread_mutex_init(&state.lock, NULL);
+    pthread_cond_init(&state.alert_cond, NULL);
 
-    struct sigaction sa;
+    pthread_create(&mem_thread, NULL, mem_sensor_thread, &state);
+    pthread_create(&cpu_thread, NULL, cpu_sensor_thread, &state);
+    pthread_create(&proc_thread, NULL, proc_sensor_thread, &state);
+    pthread_create(&alert_thread, NULL, alert_thread_func, &state);
 
-    sa.sa_handler = sigchld_handler;
-    sigemptyset(&sa.sa_mask);
-    sa.sa_flags = SA_RESTART | SA_NOCLDSTOP;
+    pthread_join()
 
-    if (sigaction(SIGCHLD, &sa, NULL) == -1)
+    // Main thread reads shared state every 2 seconds
+    while (1)
     {
-        perror("sigaction");
-        return -1;
-    }
+        pthread_mutex_lock(&state.lock);
 
-    cpu_pid = start_process("./bin/cpu_sensor");
-    if (cpu_pid < 0)
-        printf("Failed to start CPU sensor\n");
+        printf("\nSystem Metrics:\n");
+        printf("Total memory: %ld kB\n", state.mem_total);
+        printf("Free memory:  %ld kB\n", state.mem_free);
+        printf("Available:    %ld kB\n", state.mem_avail);
+        printf("Swap total:   %ld kB\n", state.swap_total);
+        printf("Swap free:    %ld kB\n", state.swap_free);
+        printf("CPU Load 1m:  %.2f\n", state.load1);
+        printf("CPU Load 5m:  %.2f\n", state.load5);
+        printf("CPU Load 15m: %.2f\n", state.load15);
+        printf("Total processes: %d\n", state.total_procs);
+        printf("-----------------------------\n");
 
-    mem_pid = start_process("./bin/mem_sensor");
-    if (mem_pid < 0)
-        printf("Failed to start Memory sensor\n");
+        pthread_mutex_unlock(&state.lock);
 
-    proc_pid = start_process("./bin/proc_sensor");
-    if (proc_pid < 0)
-        printf("Failed to start Process sensor\n");
-
-    printf("Started CPU sensor: PID %d\n", cpu_pid);
-    printf("Started Memory sensor: PID %d\n", mem_pid);
-    printf("Started Process sensor: PID %d\n", proc_pid);
-
-    while (1) {
-        time_t now = time(NULL);
-        struct tm *current_time = localtime(&now);
-
-        char time_string[30];
-
-        strftime(time_string, sizeof(time_string),
-                "%Y-%m-%d %H:%M:%S", current_time);
-
-        printf("[%s] ", time_string);
-        read_mem_data(MEM_FILE, &mem_info);
-        read_cpu_data(CPU_FILE, &cpu_info);
-        read_proc_data(PROC_FILE, &pid_count);
-        sleep(READ_INTERVAL);
-
-        print_system_info(&mem_info, &cpu_info, &pid_count);
         sleep(PRINT_INTERVAL);
     }
 
+    // We'll handle shutdown and pthread_join later.
 	return 0;
 }

@@ -1,69 +1,46 @@
 #include <dirent.h>
 #include <stdio.h>
 #include <ctype.h>
-#include <string.h>
 #include <unistd.h>
-#include <errno.h>
-#include <sys/stat.h>
 #include <stddef.h>
+#include <pthread.h>
+#include "sysmond.h"
 #include "proc_sensor.h"
 
-int read_pid_count(void) 
+void *proc_sensor_thread(void *arg)
 {
-    DIR *proc = opendir(PROC_INFO);
-    if (proc == NULL) 
+    SystemState *state = (SystemState *)arg;
+
+    while (1)
     {
-        perror("opendir /proc");
-        return -1;
-    }
-
-    size_t pid_count = 0;
-    struct dirent *entry;
-
-    while ((entry = readdir(proc)) != NULL) 
-    {
-        // Check if the directory name contains only digits
-        int is_pid = 1;
-
-        for (int i = 0; entry->d_name[i] != '\0'; i++) 
+        DIR *proc_dir = opendir(PROC_INFO);
+        if (proc_dir == NULL)
         {
-            if (!isdigit((unsigned char)entry->d_name[i])) 
+            perror("opendir /proc");
+            sleep(INTERVAL);
+            continue;
+        }
+
+        int total_procs = 0;
+        struct dirent *entry;
+
+        while ((entry = readdir(proc_dir)) != NULL)
+        {
+            if (isdigit(entry->d_name[0]))
             {
-                is_pid = 0;
-                break;
+                total_procs++;
             }
         }
 
-        if (is_pid && entry->d_name[0] != '\0')
-            pid_count++;
+        closedir(proc_dir);
+
+        // Update shared state
+        pthread_mutex_lock(&state->lock);
+        state->total_procs = total_procs;
+        pthread_mutex_unlock(&state->lock);
+
+        //sleep(INTERVAL);
     }
 
-    closedir(proc);
-    return pid_count;
-}
-
-int write_pid_count(int count) 
-{
-    FILE *fw = fopen(OUTPUT_PROC_FILE, "w");
-    if (fw == NULL) 
-    {
-        perror("fopen proc.dat");
-        return -1;
-    }
-
-    fprintf(fw, "Number of running processes: %d\n", count);
-
-    fclose(fw);
-    return 0;
-}
-
-int main(void)
-{
-    while (1)
-    {
-        write_pid_count(read_pid_count());
-        sleep(INTERVAL);
-    }
-    
-	return 0;
+    return NULL;
 }

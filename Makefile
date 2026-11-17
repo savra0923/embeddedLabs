@@ -2,40 +2,25 @@ CC ?= gcc
 CFLAGS = -Wall -Wextra -g -Iinc
 LDLIBS = -lpthread -lrt
 
-BIN_DIR = bin
+TARGET = bin/sysmond
 
-all: $(BIN_DIR)/cpu_sensor \
-     $(BIN_DIR)/mem_sensor \
-     $(BIN_DIR)/proc_sensor \
-     $(BIN_DIR)/sysmond
+SRCS = src/sysmond.c \
+       src/mem_sensor.c \
+	   src/cpu_sensor.c \
+	   src/proc_sensor.c
 
-$(BIN_DIR):
-	mkdir -p $@
+OBJS = $(SRCS:.c=.o)
 
-$(BIN_DIR)/cpu_sensor: src/cpu_sensor.o | $(BIN_DIR)
-	$(CC) $^ $(LDLIBS) -o $@
-	rm -f src/cpu_sensor.o
+.PHONY: all clean
 
-$(BIN_DIR)/mem_sensor: src/mem_sensor.o | $(BIN_DIR)
-	$(CC) $^ $(LDLIBS) -o $@
-	rm -f src/mem_sensor.o
+all: $(TARGET)
 
-$(BIN_DIR)/proc_sensor: src/proc_sensor.o | $(BIN_DIR)
-	$(CC) $^ $(LDLIBS) -o $@
-	rm -f src/proc_sensor.o
-
-$(BIN_DIR)/sysmond: src/sysmond.o \
-                    $(BIN_DIR)/cpu_sensor \
-                    $(BIN_DIR)/mem_sensor \
-                    $(BIN_DIR)/proc_sensor | $(BIN_DIR)
-	$(CC) src/sysmond.o $(LDLIBS) -o $@
-	rm -f src/sysmond.o
+$(TARGET): $(OBJS)
+	mkdir -p bin
+	$(CC) $(OBJS) $(LDFLAGS) -o $(TARGET)
 
 src/%.o: src/%.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
 clean:
-	rm -f src/*.o
-	rm -rf $(BIN_DIR)
-
-.PHONY: all clean
+	rm -f $(OBJS) $(TARGET)

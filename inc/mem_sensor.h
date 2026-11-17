@@ -13,19 +13,9 @@ extern "C" {
 
 #define PROC_MEMINFO "/proc/meminfo"
 #define OUTPUT_DIR   "/tmp/sysmon"
-#define OUTPUT_MEM_FILE  "/tmp/sysmon/mem.dat"
-#define INTERVAL     5
+#define INTERVAL     2
 
-typedef struct {
-    size_t memTotal;
-    size_t memFree;
-    size_t memAvailable;
-    size_t SwapTotal;
-    size_t SwapFree;
-} mem_info_t;
-
-int read_mem_info(mem_info_t *info);
-int write_mem_info(const mem_info_t *info);
+void *mem_sensor_thread(void *arg);
 
 #ifdef __cplusplus
 }

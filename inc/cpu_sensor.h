@@ -12,18 +12,10 @@ extern "C" {
 #define CPU_SENSOR_NAME "cpu_sensor"
 
 #define PROC_CPUINFO "/proc/loadavg"
-#define OUTPUT_DIR   "/tmp/sysmon"
-#define OUTPUT_CPU_FILE  "/tmp/sysmon/cpu.dat"
-#define INTERVAL     5
+#define INTERVAL     2
 
-typedef struct {
-    double cpu1min;
-    double cpu5min;
-    double cpu15min;
-} cpu_info_t;
+void *cpu_sensor_thread(void *arg);
 
-int read_cpu_info(cpu_info_t *info);
-int write_cpu_info(const cpu_info_t *info);
 #ifdef __cplusplus
 }
 #endif
