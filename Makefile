@@ -18,6 +18,7 @@ all: $(TARGET)
 $(TARGET): $(OBJS)
 	mkdir -p bin
 	$(CC) $(OBJS) $(LDFLAGS) -o $(TARGET)
+	rm -f $(OBJS)
 
 src/%.o: src/%.c
 	$(CC) $(CFLAGS) -c $< -o $@
