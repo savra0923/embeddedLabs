@@ -13,6 +13,9 @@ void *proc_sensor_thread(void *arg)
 
     while (1)
     {
+        if (shutdown_requested)
+            break;
+
         DIR *proc_dir = opendir(PROC_INFO);
         if (proc_dir == NULL)
         {

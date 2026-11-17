@@ -13,6 +13,9 @@ void *cpu_sensor_thread(void *arg)
 
     while (1)
     {
+        if (shutdown_requested)
+            break;
+
         FILE *fp = fopen(PROC_CPUINFO, "r");
 
         if (fp == NULL)

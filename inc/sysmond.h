@@ -13,6 +13,8 @@ extern "C" {
 
 #define PRINT_INTERVAL 2
 
+extern int shutdown_requested;
+
 typedef struct 
 {
     // Memory Metrics

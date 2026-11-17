@@ -13,6 +13,9 @@ void *mem_sensor_thread(void *arg)
 
     while (1)
     {
+        if (shutdown_requested)
+            break;
+
         FILE *fp = fopen(PROC_MEMINFO, "r");
 
         if (fp == NULL)

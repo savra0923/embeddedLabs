@@ -13,14 +13,11 @@
 #include "cpu_sensor.h"
 #include "proc_sensor.h"
 
-int make_output_dir(void)
+int shutdown_requested = 0;
+
+void handle_sigint(int sig)
 {
-    if (mkdir("/tmp/sysmon", 0755) == -1 && errno != EEXIST)
-    {
-        perror("mkdir");
-        return -1;
-    }
-    return 0;
+    shutdown_requested = 1;
 }
 
 void *alert_thread_func(void *arg)
@@ -33,6 +30,12 @@ void *alert_thread_func(void *arg)
 
         pthread_cond_wait(&state->alert_cond, &state->lock);
 
+        if (shutdown_requested)
+        {
+            pthread_mutex_unlock(&state->lock);
+            break;
+        }
+
         fprintf(stderr, "URGENT: High CPU load detected!\n");
 
         pthread_mutex_unlock(&state->lock);
@@ -43,6 +46,8 @@ void *alert_thread_func(void *arg)
 
 int main(void)
 {
+    signal(SIGINT, handle_sigint);
+
     SystemState state;
 
     pthread_t mem_thread;
@@ -58,10 +63,7 @@ int main(void)
     pthread_create(&proc_thread, NULL, proc_sensor_thread, &state);
     pthread_create(&alert_thread, NULL, alert_thread_func, &state);
 
-    pthread_join()
-
-    // Main thread reads shared state every 2 seconds
-    while (1)
+    while (!shutdown_requested)
     {
         pthread_mutex_lock(&state.lock);
 
@@ -82,6 +84,16 @@ int main(void)
         sleep(PRINT_INTERVAL);
     }
 
-    // We'll handle shutdown and pthread_join later.
+    printf("\nShutting down...\n");
+
+    pthread_mutex_lock(&state.lock);
+    pthread_cond_broadcast(&state.alert_cond);
+    pthread_mutex_unlock(&state.lock);
+
+    pthread_join(mem_thread, NULL);
+    pthread_join(cpu_thread, NULL);
+    pthread_join(proc_thread, NULL);
+    pthread_join(alert_thread, NULL);
+
 	return 0;
 }
