@@ -117,21 +117,47 @@ int print_system_info(mem_info_t *mem_info, cpu_info_t *cpu_info, int *pid_count
 
 int main(void)
 {
-    make_output_dir();
+    int fds[2];
+    pid_t pid;
 
-    mem_info_t mem_info;
-    cpu_info_t cpu_info;
-    int pid_count = 0;
+    pipe(fds);
+    pid = fork();
 
-    while (1) {
-        read_mem_data(MEM_FILE, &mem_info);
-        read_cpu_data(CPU_FILE, &cpu_info);
-        read_proc_data(PROC_FILE, &pid_count);
-        sleep(READ_INTERVAL);
+    if(pid == (pid_t) 0) /*child*/
+    {
+        close(fds[0]);  // Child only writes
 
-        print_system_info(&mem_info, &cpu_info, &pid_count);
-        sleep(PRINT_INTERVAL);
+        char fd_arg[20];
+        snprintf(fd_arg, sizeof(fd_arg), "%d", fds[1]);
+
+        execl("./bin/mem_sensor", "mem_sensor", fd_arg, (char *)NULL);
+
+        perror("execl");
     }
+    else /*parent*/
+    {
+        close(fds[1]);  // Parent only reads
+
+        FILE *stream = fdopen(fds[0], "r");
+
+        if (stream == NULL)
+        {
+            perror("fdopen");
+            return 1;
+        }
+
+        MemData info;
+
+        while (fread(&info, sizeof(MemData), 1, stream) == 1)
+        {
+            printf("Total memory: %ld\n", info.mem_total);
+            printf("Free memory: %ld\n", info.mem_free);
+        }
+
+        fclose(stream);
+        waitpid(pid, NULL, 0);
+    }
+    
 
 	return 0;
 }

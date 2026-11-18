@@ -7,7 +7,22 @@
 #include <sysmon_ipc.h>
 #include "mem_sensor.h"
 
-int read_mem_info(mem_info_t *info) 
+int writer(FILE *stream, const MemData *info)
+{
+    if (fwrite(info, sizeof(MemData), 1, stream) != 1)
+    {
+        perror("fwrite");
+        return -1;
+    }
+
+    if (fflush(stream) == EOF)
+    {
+        perror("fflush");
+        return -1;
+    }
+}
+
+int read_mem_info() 
 {
     FILE *fp = fopen(PROC_MEMINFO, "r");
     if (fp == NULL) 
@@ -17,19 +32,19 @@ int read_mem_info(mem_info_t *info)
     }
 
     char line[256];
-    memset(info, 0, sizeof(mem_info_t));
+    memset(info, 0, sizeof(MemData));
 
     while (fgets(line, sizeof(line), fp) != NULL) 
     {
-        if (sscanf(line, "MemTotal: %zu", &info->memTotal) == 1)
+        if (sscanf(line, "MemTotal: %zu", &info->mem_total) == 1)
             continue;
-        if (sscanf(line, "MemFree: %zu", &info->memFree) == 1)
+        if (sscanf(line, "MemFree: %zu", &info->mem_free) == 1)
             continue;
-        if (sscanf(line, "MemAvailable: %zu", &info->memAvailable) == 1)
+        if (sscanf(line, "MemAvailable: %zu", &info->mem_avail) == 1)
             continue;
-        if (sscanf(line, "SwapTotal: %zu", &info->SwapTotal) == 1)
+        if (sscanf(line, "SwapTotal: %zu", &info->swap_total) == 1)
             continue;
-        if (sscanf(line, "SwapFree: %zu", &info->SwapFree) == 1)
+        if (sscanf(line, "SwapFree: %zu", &info->swap_free) == 1)
             continue;
     }
 
@@ -56,15 +71,15 @@ int write_mem_info(const mem_info_t *info)
     return 0;
 }
 
-int main(void)
+int main(int argc, char *argv[])
 {
-    mem_info_t info;
+    MemData info;
 
     while (1)
     {
-        if (read_mem_info(&info) == 0) 
+        if (read_mem_info() == 0) 
         {
-            if (write_mem_info(&info) != 0) 
+            if (writer(argv[1]) != 0) 
                 fprintf(stderr, "Failed to write memory info\n");
         } 
         else 
