@@ -4,6 +4,7 @@
 #include <errno.h>
 #include <sys/stat.h>
 #include <stddef.h>
+#include <sysmon_ipc.h>
 #include "cpu_sensor.h"
 
 int read_cpu_info(cpu_info_t *info) 

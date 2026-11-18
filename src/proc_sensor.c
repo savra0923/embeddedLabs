@@ -6,6 +6,7 @@
 #include <errno.h>
 #include <sys/stat.h>
 #include <stddef.h>
+#include <sysmon_ipc.h>
 #include "proc_sensor.h"
 
 int read_pid_count(void) 

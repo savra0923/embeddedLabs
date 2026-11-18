@@ -4,6 +4,7 @@
 #include <errno.h>
 #include <sys/stat.h>
 #include <stddef.h>
+#include <sysmon_ipc.h>
 #include "mem_sensor.h"
 
 int read_mem_info(mem_info_t *info) 

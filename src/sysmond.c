@@ -4,6 +4,7 @@
 #include <errno.h>
 #include <sys/stat.h>
 #include <stddef.h>
+#include <sysmon_ipc.h>
 #include "sysmond.h"
 #include "mem_sensor.h"
 #include "cpu_sensor.h"
