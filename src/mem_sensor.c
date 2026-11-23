@@ -10,18 +10,24 @@
 
 int writer(FILE *stream, const MemData *info)
 {
-    if (fwrite(info, sizeof(MemData), 1, stream) != 1)
-    {
-        perror("fwrite");
-        return -1;
-    }
+    char buffer[1024];
 
-    if (fflush(stream) == EOF)
-    {
-        perror("fflush");
-        return -1;
-    }
+    while (1) {
+        if (read_mem_info(info) == 0) {
+            snprintf(buffer, sizeof(buffer),
+                    "%ld %ld %ld %ld %ld\n",
+                    info->mem_total,
+                    info->mem_free,
+                    info->mem_avail,
+                    info->swap_total,
+                    info->swap_free);
 
+            fputs(buffer, stream);
+            fflush(stream);
+        }
+
+        sleep(1);
+    }
     return 0;
 }
 
@@ -76,32 +82,31 @@ int write_mem_info(const mem_info_t *info)
 
 int main(int argc, char *argv[])
 {
-    int fd = STDOUT_FILENO;
+    if (argc < 2)
+        return 1;
 
-    if (argc > 1)
-        fd = atoi(argv[1]);
+    int fd = atoi(argv[1]);
 
     FILE *stream = fdopen(fd, "w");
-    if (stream == NULL) {
+
+    if (stream == NULL)
+    {
         perror("fdopen");
+        close(fd);
         return 1;
     }
 
     MemData info;
 
-    while (1) {
-        if (read_mem_info(&info) == 0) 
+    while (1)
+    {
+        if (read_mem_info(&info) == 0)
         {
-            if (fwrite(&info, sizeof(MemData), 1, stream) != 1) 
-            {
-                perror("fwrite");
+            if (writer(stream, &info) != 0)
                 break;
-            }
-
-            fflush(stream);
         }
 
-        sleep(1);
+        sleep(INTERVAL);
     }
 
     fclose(stream);

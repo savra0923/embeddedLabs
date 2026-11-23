@@ -118,52 +118,63 @@ int print_system_info(mem_info_t *mem_info, cpu_info_t *cpu_info, int *pid_count
 
 int main(void)
 {
-    int fd[2];
+    int fds[2];
     pid_t pid;
 
-    pipe(fd);
-
+    pipe(fds);
     pid = fork();
 
-    if (pid == 0) // Child
+    if (pid == 0)  /* Child */
     {
-        close(fd[0]);
+        close(fds[0]);  // Child only writes
 
         char fd_arg[20];
-
+        snprintf(fd_arg, sizeof(fd_arg), "%d", fds[1]);
+        
         char *args[] = {
             "mem_sensor",
             fd_arg,
             NULL};
 
         execve("./bin/mem_sensor", args, NULL);
+
+        perror("execve");
     }
-    else      // Parent
+    else /* Parent */
     {
-        close(fd[1]);
+        close(fds[1]);  // Parent only reads
 
-        FILE *stream = fdopen(fd[0], "r");
+        FILE *stream = fdopen(fds[0], "r");
 
-        if (stream == NULL) {
+        if (stream == NULL)
+        {
             perror("fdopen");
             return 1;
         }
 
-        MemData info;
+        char buffer[1024];
 
-        while (fread(&info, sizeof(MemData), 1, stream) == 1) 
+        while (fgets(buffer, sizeof(buffer), stream) != NULL) 
         {
+            MemData info;
+
+            sscanf(buffer, "%ld %ld %ld %ld %ld", &info.mem_total, &info.mem_free,
+                &info.mem_avail, &info.swap_total, &info.swap_free);
+
             printf("----------MEMDATA----------\n");
             printf("Total memory: %ld\n", info.mem_total);
             printf("Free memory: %ld\n", info.mem_free);
             printf("Available memory: %ld\n", info.mem_avail);
             printf("Total swap: %ld\n", info.swap_total);
             printf("Free swap: %ld\n", info.swap_free);
+        
         }
 
         fclose(stream);
         waitpid(pid, NULL, 0);
+        
     }
     
+
 	return 0;
 }
