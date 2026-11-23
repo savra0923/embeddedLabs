@@ -5,6 +5,7 @@
 #include <sys/stat.h>
 #include <stddef.h>
 #include <sys/wait.h>
+#include <fcntl.h>
 #include <sysmon_ipc.h>
 #include "sysmond.h"
 #include "mem_sensor.h"
@@ -116,6 +117,28 @@ int print_system_info(mem_info_t *mem_info, cpu_info_t *cpu_info, int *pid_count
     return 0;
 }
 
+pid_t spawn_sensor(const char *path)
+{
+    pid_t pid = fork();
+
+    if (pid == -1)
+    {
+        perror("fork");
+    }
+
+    if (pid == 0)
+    {
+        char *args[] = {(char *)path, NULL};
+        char *env[] = {NULL};
+
+        execve(path, args, env);
+
+        perror("execve");
+    }
+
+    return pid;
+}
+
 int main(void)
 {
     int fds[2];
@@ -144,6 +167,22 @@ int main(void)
     {
         close(fds[1]);  // Parent only reads
 
+        if (mkfifo(CPU_FIFO_PATH, 0666) == -1)
+        {
+            if (errno != EEXIST)
+                perror("mkfifo");
+        }
+
+        pid_t cpu_pid = spawn_sensor("./bin/cpu_sensor");
+
+        int cpu_fd = open(CPU_FIFO_PATH, O_RDONLY);
+        char buffer_cpu[1024];
+
+        if (cpu_fd == -1)
+        {
+            perror("open CPU FIFO");
+        }
+
         FILE *stream = fdopen(fds[0], "r");
 
         if (stream == NULL)
@@ -167,9 +206,19 @@ int main(void)
             printf("Available memory: %ld\n", info.mem_avail);
             printf("Total swap: %ld\n", info.swap_total);
             printf("Free swap: %ld\n", info.swap_free);
-        
-        }
 
+            CpuData data;
+
+            ssize_t bytes = read(cpu_fd, &data, sizeof(data));
+
+            if (bytes == sizeof(data))
+            {
+                printf("CPU load: %.2f %.2f %.2f\n",
+                    data.load1, data.load5, data.load15);
+            }
+        }
+        
+        close(cpu_fd);
         fclose(stream);
         waitpid(pid, NULL, 0);
         

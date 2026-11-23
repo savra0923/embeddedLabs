@@ -4,6 +4,7 @@
 #include <errno.h>
 #include <sys/stat.h>
 #include <stddef.h>
+#include <fcntl.h>
 #include <sysmon_ipc.h>
 #include "cpu_sensor.h"
 
@@ -48,19 +49,42 @@ int write_cpu_info(const cpu_info_t *info)
 
 int main(void)
 {
-    cpu_info_t info;
+    int fd = open(CPU_FIFO_PATH, O_WRONLY);
+
+    if (fd == -1)
+    {
+        perror("open CPU FIFO");
+    }
 
     while (1)
     {
-        if (read_cpu_info(&info) == 0) 
+        FILE *fp = fopen("/proc/loadavg", "r");
+
+        if (fp == NULL)
         {
-            if (write_cpu_info(&info) != 0) 
-                fprintf(stderr, "Failed to write CPU info\n");
-        } 
-        else 
-            fprintf(stderr, "Failed to read CPU info\n");
-        sleep(INTERVAL);
+            perror("fopen loadavg");
+            break;
+        }
+
+        CpuData data;
+
+        if (fscanf(fp, "%lf %lf %lf",
+                   &data.load1,
+                   &data.load5,
+                   &data.load15) != 3)
+        {
+            fclose(fp);
+            continue;
+        }
+
+        fclose(fp);
+
+        if (write(fd, &data, sizeof(data)) != sizeof(data))
+        {
+            perror("write CPU FIFO");
+            break;
+        }
+
+        sleep(1);
     }
-	
-	return 0;
 }
