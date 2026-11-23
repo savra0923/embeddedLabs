@@ -76,31 +76,32 @@ int write_mem_info(const mem_info_t *info)
 
 int main(int argc, char *argv[])
 {
-    if (argc < 2)
-        return 1;
+    int fd = STDOUT_FILENO;
 
-    int fd = atoi(argv[1]);
+    if (argc > 1)
+        fd = atoi(argv[1]);
 
     FILE *stream = fdopen(fd, "w");
-
-    if (stream == NULL)
-    {
+    if (stream == NULL) {
         perror("fdopen");
-        close(fd);
         return 1;
     }
 
     MemData info;
 
-    while (1)
-    {
-        if (read_mem_info(&info) == 0)
+    while (1) {
+        if (read_mem_info(&info) == 0) 
         {
-            if (writer(stream, &info) != 0)
+            if (fwrite(&info, sizeof(MemData), 1, stream) != 1) 
+            {
+                perror("fwrite");
                 break;
+            }
+
+            fflush(stream);
         }
 
-        sleep(INTERVAL);
+        sleep(1);
     }
 
     fclose(stream);
