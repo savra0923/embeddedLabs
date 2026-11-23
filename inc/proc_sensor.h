@@ -12,13 +12,8 @@ extern "C" {
 #define PROC_SENSOR_NAME "proc_sensor"
 
 #define PROC_INFO    "/proc"
-#define OUTPUT_DIR   "/tmp/sysmon"
-#define OUTPUT_PROC_FILE  "/tmp/sysmon/proc.dat"
-#define INTERVAL     5
-
 
 int read_pid_count(void);
-int write_pid_count(int count);
 #ifdef __cplusplus
 }
 #endif

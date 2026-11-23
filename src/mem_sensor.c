@@ -8,7 +8,7 @@
 #include <sysmon_ipc.h>
 #include "mem_sensor.h"
 
-int writer(FILE *stream, const MemData *info)
+int writer(FILE *stream, MemData *info)
 {
     char buffer[1024];
 
@@ -58,25 +58,6 @@ int read_mem_info(MemData *info)
     }
 
     fclose(fp);
-    return 0;
-}
-
-int write_mem_info(const mem_info_t *info)
-{
-    FILE *fw = fopen(OUTPUT_MEM_FILE, "w");
-    if (fw == NULL) 
-    {
-        perror("fopen mem.dat");
-        return -1;
-    }
-
-    fprintf(fw, "MemTotal:     %zu kB\n", info->memTotal);
-    fprintf(fw, "MemFree:      %zu kB\n", info->memFree);
-    fprintf(fw, "MemAvailable: %zu kB\n", info->memAvailable);
-    fprintf(fw, "SwapTotal:    %zu kB\n", info->SwapTotal);
-    fprintf(fw, "SwapFree:     %zu kB\n", info->SwapFree);
-
-    fclose(fw);
     return 0;
 }
 

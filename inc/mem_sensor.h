@@ -12,24 +12,12 @@ extern "C" {
 #define MEM_SENSOR_NAME "mem_sensor"
 
 #define PROC_MEMINFO "/proc/meminfo"
-#define OUTPUT_DIR   "/tmp/sysmon"
-#define OUTPUT_MEM_FILE  "/tmp/sysmon/mem.dat"
 #define INTERVAL     1
 
-typedef struct {
-    size_t memTotal;
-    size_t memFree;
-    size_t memAvailable;
-    size_t SwapTotal;
-    size_t SwapFree;
-} mem_info_t;
-
-
 MemData *info;
-int writer(FILE *stream, const MemData *info);
+int writer(FILE *stream, MemData *info);
 
 int read_mem_info(MemData *info);
-int write_mem_info(const mem_info_t *info);
 
 #ifdef __cplusplus
 }

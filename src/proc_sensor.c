@@ -1,10 +1,7 @@
 #include <dirent.h>
 #include <stdio.h>
 #include <ctype.h>
-#include <string.h>
 #include <unistd.h>
-#include <errno.h>
-#include <sys/stat.h>
 #include <stddef.h>
 #include <fcntl.h>
 #include <sysmon_ipc.h>
@@ -42,21 +39,6 @@ int read_pid_count(void)
 
     closedir(proc);
     return pid_count;
-}
-
-int write_pid_count(int count) 
-{
-    FILE *fw = fopen(OUTPUT_PROC_FILE, "w");
-    if (fw == NULL) 
-    {
-        perror("fopen proc.dat");
-        return -1;
-    }
-
-    fprintf(fw, "Number of running processes: %d\n", count);
-
-    fclose(fw);
-    return 0;
 }
 
 int main(void)
