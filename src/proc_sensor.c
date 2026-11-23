@@ -6,6 +6,7 @@
 #include <errno.h>
 #include <sys/stat.h>
 #include <stddef.h>
+#include <fcntl.h>
 #include <sysmon_ipc.h>
 #include "proc_sensor.h"
 
@@ -60,10 +61,26 @@ int write_pid_count(int count)
 
 int main(void)
 {
+    int fd = open(PROC_FIFO_PATH, O_WRONLY);
+
+    if (fd == -1)
+    {
+        perror("open PROC FIFO");
+    }
+
     while (1)
     {
-        write_pid_count(read_pid_count());
-        sleep(INTERVAL);
+        ProcData data;
+
+        data.total_procs = read_pid_count();
+
+        if (write(fd, &data, sizeof(data)) != sizeof(data))
+        {
+            perror("write PROC FIFO");
+            break;
+        }
+
+        sleep(1);
     }
     
 	return 0;

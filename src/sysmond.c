@@ -183,6 +183,22 @@ int main(void)
             perror("open CPU FIFO");
         }
 
+        if (mkfifo(PROC_FIFO_PATH, 0666) == -1)
+        {
+            if (errno != EEXIST)
+                perror("mkfifo");
+        }
+
+        pid_t proc_pid = spawn_sensor("./bin/proc_sensor");
+
+        int proc_fd = open(PROC_FIFO_PATH, O_RDONLY);
+        char buffer_proc[1024];
+
+        if (proc_fd == -1)
+        {
+            perror("open CPU FIFO");
+        }
+
         FILE *stream = fdopen(fds[0], "r");
 
         if (stream == NULL)
@@ -213,15 +229,28 @@ int main(void)
 
             if (bytes == sizeof(data))
             {
+                printf("----------CPUDATA----------\n");
                 printf("CPU load: %.2f %.2f %.2f\n",
                     data.load1, data.load5, data.load15);
             }
+
+            ProcData proc_data;
+
+            ssize_t proc_bytes = read(proc_fd, &proc_data, sizeof(proc_data));
+
+            if (proc_bytes == sizeof(proc_data))
+            {
+                printf("----------PROCDATA----------\n");
+                printf("PROC Total: %d\n", proc_data.total_procs);
+            }
         }
-        
+
+        close(proc_fd);
         close(cpu_fd);
         fclose(stream);
         waitpid(pid, NULL, 0);
-        
+        waitpid(cpu_pid, NULL, 0);
+        waitpid(proc_pid, NULL, 0);
     }
     
 
