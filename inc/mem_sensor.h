@@ -26,9 +26,9 @@ typedef struct {
 
 
 MemData *info;
-int writer(char* fds_write);
+int writer(FILE *stream, const MemData *info);
 
-int read_mem_info();
+int read_mem_info(MemData *info);
 int write_mem_info(const mem_info_t *info);
 
 #ifdef __cplusplus

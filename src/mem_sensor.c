@@ -4,6 +4,7 @@
 #include <errno.h>
 #include <sys/stat.h>
 #include <stddef.h>
+#include <stdlib.h>
 #include <sysmon_ipc.h>
 #include "mem_sensor.h"
 
@@ -20,9 +21,11 @@ int writer(FILE *stream, const MemData *info)
         perror("fflush");
         return -1;
     }
+
+    return 0;
 }
 
-int read_mem_info() 
+int read_mem_info(MemData *info)
 {
     FILE *fp = fopen(PROC_MEMINFO, "r");
     if (fp == NULL) 
@@ -36,15 +39,15 @@ int read_mem_info()
 
     while (fgets(line, sizeof(line), fp) != NULL) 
     {
-        if (sscanf(line, "MemTotal: %zu", &info->mem_total) == 1)
+        if (sscanf(line, "MemTotal: %lu", &info->mem_total) == 1)
             continue;
-        if (sscanf(line, "MemFree: %zu", &info->mem_free) == 1)
+        if (sscanf(line, "MemFree: %lu", &info->mem_free) == 1)
             continue;
-        if (sscanf(line, "MemAvailable: %zu", &info->mem_avail) == 1)
+        if (sscanf(line, "MemAvailable: %lu", &info->mem_avail) == 1)
             continue;
-        if (sscanf(line, "SwapTotal: %zu", &info->swap_total) == 1)
+        if (sscanf(line, "SwapTotal: %lu", &info->swap_total) == 1)
             continue;
-        if (sscanf(line, "SwapFree: %zu", &info->swap_free) == 1)
+        if (sscanf(line, "SwapFree: %lu", &info->swap_free) == 1)
             continue;
     }
 
@@ -73,19 +76,33 @@ int write_mem_info(const mem_info_t *info)
 
 int main(int argc, char *argv[])
 {
+    if (argc < 2)
+        return 1;
+
+    int fd = atoi(argv[1]);
+
+    FILE *stream = fdopen(fd, "w");
+
+    if (stream == NULL)
+    {
+        perror("fdopen");
+        close(fd);
+        return 1;
+    }
+
     MemData info;
 
     while (1)
     {
-        if (read_mem_info() == 0) 
+        if (read_mem_info(&info) == 0)
         {
-            if (writer(argv[1]) != 0) 
-                fprintf(stderr, "Failed to write memory info\n");
-        } 
-        else 
-            fprintf(stderr, "Failed to read memory info\n");
+            if (writer(stream, &info) != 0)
+                break;
+        }
+
         sleep(INTERVAL);
     }
-	
-	return 0;
+
+    fclose(stream);
+    return 0;
 }

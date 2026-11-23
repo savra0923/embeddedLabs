@@ -4,6 +4,7 @@
 #include <errno.h>
 #include <sys/stat.h>
 #include <stddef.h>
+#include <sys/wait.h>
 #include <sysmon_ipc.h>
 #include "sysmond.h"
 #include "mem_sensor.h"
@@ -123,18 +124,23 @@ int main(void)
     pipe(fds);
     pid = fork();
 
-    if(pid == (pid_t) 0) /*child*/
+    if (pid == 0)  /* Child */
     {
         close(fds[0]);  // Child only writes
 
         char fd_arg[20];
         snprintf(fd_arg, sizeof(fd_arg), "%d", fds[1]);
+        
+        char *args[] = {
+            "mem_sensor",
+            fd_arg,
+            NULL};
 
-        execl("./bin/mem_sensor", "mem_sensor", fd_arg, (char *)NULL);
+        execve("./bin/mem_sensor", args, NULL);
 
-        perror("execl");
+        perror("execve");
     }
-    else /*parent*/
+    else /* Parent */
     {
         close(fds[1]);  // Parent only reads
 
@@ -150,8 +156,12 @@ int main(void)
 
         while (fread(&info, sizeof(MemData), 1, stream) == 1)
         {
+            printf("----------MEMDATA----------\n");
             printf("Total memory: %ld\n", info.mem_total);
             printf("Free memory: %ld\n", info.mem_free);
+            printf("Available memory: %ld\n", info.mem_avail);
+            printf("Total swap: %ld\n", info.swap_total);
+            printf("Free swap: %ld\n", info.swap_free);
         }
 
         fclose(stream);
