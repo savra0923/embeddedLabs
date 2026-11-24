@@ -4,6 +4,8 @@
 #include <errno.h>
 #include <sys/stat.h>
 #include <stddef.h>
+#include <pthread.h>
+#include <stdlib.h>
 #include <sys/wait.h>
 #include <fcntl.h>
 #include <sysmon_ipc.h>
@@ -50,6 +52,7 @@ pid_t spawn_sensor(const char *path, const char *fifo_path, int *fd)
         execve(path, args, NULL);
 
         perror("execve");
+        _exit(EXIT_FAILURE);
     }
 
     *fd = open(fifo_path, O_RDONLY);
@@ -63,7 +66,7 @@ pid_t spawn_sensor(const char *path, const char *fifo_path, int *fd)
     return pid;
 }
 
-int anonymous_pipe(int fds1)
+void anonymous_pipe(int fds1)
 {
     char fd_arg[20];
     snprintf(fd_arg, sizeof(fd_arg), "%d", fds1);
@@ -76,72 +79,227 @@ int anonymous_pipe(int fds1)
     execve("./bin/mem_sensor", args, NULL);
 
     perror("execve");
-    return 0;
 }
 
-
-
-int main(void)
+static int read_full(int fd, void *buffer, size_t size)
 {
-    int fds[2];
-    pid_t pid;
+    size_t total = 0;
+    char *ptr = buffer;
 
-    pipe(fds);
-    pid = fork();
-
-    if (pid == 0)  /* Child */
+    while (total < size)
     {
-        close(fds[0]);  // Child only writes
+        ssize_t bytes = read(fd, ptr + total, size - total);
 
-        anonymous_pipe(fds[1]);
-    }
-    else /* Parent */
-    {
-        close(fds[1]);  // Parent only reads
-
-        if (mkfifo(CPU_FIFO_PATH, 0666) == -1)
+        if (bytes == -1)
         {
-            if (errno != EEXIST)
-                perror("mkfifo");
+            if (errno == EINTR)
+                continue;
+
+            return -1;
         }
 
-        int cpu_fd;
-        pid_t cpu_pid = spawn_sensor("./bin/cpu_sensor", CPU_FIFO_PATH, &cpu_fd);
+        if (bytes == 0)
+            return total == 0 ? 0 : -1;
 
-        int proc_fd;
-        pid_t proc_pid = spawn_sensor("./bin/proc_sensor", PROC_FIFO_PATH, &proc_fd);
+        total += bytes;
+    }
 
-        FILE *stream = fdopen(fds[0], "r");
+    return 1;
+}
+
+void *reader_thread(void *arg)
+{
+    ThreadArgs *args = (ThreadArgs *)arg;
+    SharedData *shared = args->shared;
+
+    if (args->sensor_type == SENSOR_MEM)
+    {
+        FILE *stream = fdopen(args->fd, "r");
 
         if (stream == NULL)
         {
             perror("fdopen");
-            return 1;
+            return NULL;
         }
 
         char buffer[1024];
 
-        while (fgets(buffer, sizeof(buffer), stream) != NULL) 
+        while (fgets(buffer, sizeof(buffer), stream) != NULL)
         {
-            MemData mem_data;
-            CpuData cpu_data;
-            ProcData proc_data;
+            MemData data;
 
-            sscanf(buffer, "%ld %ld %ld %ld %ld", &mem_data.mem_total, &mem_data.mem_free,
-                &mem_data.mem_avail, &mem_data.swap_total, &mem_data.swap_free);
+            if (sscanf(buffer, "%zu %zu %zu %zu %zu",
+                       &data.mem_total,
+                       &data.mem_free,
+                       &data.mem_avail,
+                       &data.swap_total,
+                       &data.swap_free) != 5)
+            {
+                fprintf(stderr, "Invalid memory sensor data\n");
+                continue;
+            }
 
-            read(cpu_fd, &cpu_data, sizeof(cpu_data));
-            read(proc_fd, &proc_data, sizeof(proc_data));
+            pthread_mutex_lock(&shared->mutex);
 
-            print_system_info(&mem_data, &cpu_data, &proc_data);
+            shared->mem = data;
+            shared->mem_valid = 1;
+
+            pthread_mutex_unlock(&shared->mutex);
         }
 
-        close(proc_fd);
-        close(cpu_fd);
         fclose(stream);
-        waitpid(pid, NULL, 0);
-        waitpid(cpu_pid, NULL, 0);
-        waitpid(proc_pid, NULL, 0);
+    }
+    else if (args->sensor_type == SENSOR_CPU)
+    {
+        while (1)
+        {
+            CpuData data;
+
+            int result = read_full(args->fd, &data, sizeof(data));
+
+            if (result <= 0)
+                break;
+
+            pthread_mutex_lock(&shared->mutex);
+
+            shared->cpu = data;
+            shared->cpu_valid = 1;
+
+            pthread_mutex_unlock(&shared->mutex);
+        }
+    }
+    else if (args->sensor_type == SENSOR_PROC)
+    {
+        while (1)
+        {
+            ProcData data;
+
+            int result = read_full(args->fd, &data, sizeof(data));
+
+            if (result <= 0)
+                break;
+
+            pthread_mutex_lock(&shared->mutex);
+
+            shared->proc = data;
+            shared->proc_valid = 1;
+
+            pthread_mutex_unlock(&shared->mutex);
+        }
+    }
+
+    return NULL;
+}
+
+int main(void)
+{
+    int fds[2];
+
+    if (pipe(fds) == -1)
+    {
+        perror("pipe");
+        return 1;
+    }
+
+    pid_t mem_pid = fork();
+
+    if (mem_pid == -1)
+    {
+        perror("fork");
+        return 1;
+    }
+
+    if (mem_pid == 0)
+    {
+        close(fds[0]);
+
+        anonymous_pipe(fds[1]);
+        _exit(EXIT_FAILURE);
+    }
+
+    /* Parent process */
+
+    close(fds[1]);
+
+    int cpu_fd;
+    pid_t cpu_pid = spawn_sensor(
+        "./bin/cpu_sensor", CPU_FIFO_PATH, &cpu_fd);
+
+    if (cpu_pid == -1)
+        return 1;
+
+    int proc_fd;
+    pid_t proc_pid = spawn_sensor(
+        "./bin/proc_sensor", PROC_FIFO_PATH, &proc_fd);
+
+    if (proc_pid == -1)
+        return 1;
+
+    /* Initialize shared data */
+
+    SharedData shared = {0};
+
+    pthread_mutex_init(&shared.mutex, NULL);
+
+    /* Prepare thread arguments */
+
+    ThreadArgs args[3] =
+    {
+        {fds[0], SENSOR_MEM,  &shared},
+        {cpu_fd, SENSOR_CPU,  &shared},
+        {proc_fd, SENSOR_PROC, &shared}
+    };
+
+    pthread_t threads[3];
+
+    /* Create reader threads */
+
+    for (int i = 0; i < 3; i++)
+    {
+        int ret = pthread_create(
+            &threads[i],
+            NULL,
+            reader_thread,
+            &args[i]);
+
+        if (ret != 0)
+        {
+            fprintf(stderr, "pthread_create: %s\n", strerror(ret));
+            return 1;
+        }
+    }
+
+    /* Main thread prints the latest sensor data */
+
+    while (1)
+    {
+        MemData mem;
+        CpuData cpu;
+        ProcData proc;
+
+        int ready = 0;
+
+        pthread_mutex_lock(&shared.mutex);
+
+        if (shared.mem_valid &&
+            shared.cpu_valid &&
+            shared.proc_valid)
+        {
+            mem = shared.mem;
+            cpu = shared.cpu;
+            proc = shared.proc;
+
+            ready = 1;
+        }
+
+        pthread_mutex_unlock(&shared.mutex);
+
+        if (ready)
+        {
+            print_system_info(&mem, &cpu, &proc);
+        }
+
+        sleep(1);
     }
     
 

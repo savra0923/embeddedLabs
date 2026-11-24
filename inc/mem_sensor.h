@@ -12,7 +12,7 @@ extern "C" {
 #define MEM_SENSOR_NAME "mem_sensor"
 
 #define PROC_MEMINFO "/proc/meminfo"
-#define INTERVAL     1
+#define MEM_INTERVAL     1
 
 MemData *info;
 int writer(FILE *stream, MemData *info);
