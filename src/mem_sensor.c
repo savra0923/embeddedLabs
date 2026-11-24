@@ -26,7 +26,7 @@ int writer(FILE *stream, MemData *info)
             fflush(stream);
         }
 
-        sleep(1);
+        sleep(INTERVAL);
     }
     return 0;
 }
