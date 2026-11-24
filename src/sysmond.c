@@ -256,11 +256,7 @@ int main(void)
 
     for (int i = 0; i < 3; i++)
     {
-        int ret = pthread_create(
-            &threads[i],
-            NULL,
-            reader_thread,
-            &args[i]);
+        int ret = pthread_create(&threads[i], NULL, reader_thread, &args[i]);
 
         if (ret != 0)
         {
@@ -281,9 +277,7 @@ int main(void)
 
         pthread_mutex_lock(&shared.mutex);
 
-        if (shared.mem_valid &&
-            shared.cpu_valid &&
-            shared.proc_valid)
+        if (shared.mem_valid && shared.cpu_valid && shared.proc_valid)
         {
             mem = shared.mem;
             cpu = shared.cpu;
@@ -295,9 +289,7 @@ int main(void)
         pthread_mutex_unlock(&shared.mutex);
 
         if (ready)
-        {
             print_system_info(&mem, &cpu, &proc);
-        }
 
         sleep(1);
     }
