@@ -43,6 +43,6 @@ int main(void)
             break;
         }
 
-        sleep(INTERVAL+10);
+        sleep(INTERVAL+5);
     }
 }

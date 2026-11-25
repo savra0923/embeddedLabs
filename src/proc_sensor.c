@@ -62,7 +62,7 @@ int main(void)
             break;
         }
 
-        sleep(INTERVAL+20);
+        sleep(INTERVAL+10);
     }
     
 	return 0;

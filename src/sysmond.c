@@ -8,10 +8,18 @@
 #include <stdlib.h>
 #include <sys/wait.h>
 #include <fcntl.h>
+#include <signal.h>
 #include <sysmon_ipc.h>
 //#include "mem_sensor.h"
 #include "cpu_sensor.h"
 #include "proc_sensor.h"
+
+static volatile sig_atomic_t stop_requested = 0;
+
+void signal_handler(int signum)
+{
+    stop_requested = 1;
+}
 
 int print_system_info(MemData *mem_info, CpuData *cpu_info, ProcData *proc_info)
 {
@@ -191,6 +199,63 @@ void *reader_thread(void *arg)
     return NULL;
 }
 
+void reap_child(pid_t pid)
+{
+    if (pid <= 0)
+        return;
+
+    while (waitpid(pid, NULL, 0) == -1)
+    {
+        if (errno == EINTR)
+            continue;
+
+        perror("waitpid");
+        break;
+    }
+}
+
+void cleanup(pid_t mem_pid, pid_t cpu_pid, pid_t proc_pid, pthread_t threads[], SharedData *shared)
+{
+    /* Cleanup */
+
+    printf("\nShutting down sysmon...\n");
+
+    /* Terminate sensors */
+
+    if (mem_pid > 0)
+        kill(mem_pid, SIGTERM);
+
+    if (cpu_pid > 0)
+        kill(cpu_pid, SIGTERM);
+
+    if (proc_pid > 0)
+        kill(proc_pid, SIGTERM);
+
+    /* Reap child processes */
+
+    reap_child(mem_pid);
+    reap_child(cpu_pid);
+    reap_child(proc_pid);
+
+    /* Reader threads should now receive EOF and exit */
+
+    for (int i = 0; i < 3; i++)
+    {
+        pthread_join(threads[i], NULL);
+    }
+
+    /* Remove named FIFOs */
+
+    unlink(CPU_FIFO_PATH);
+    unlink(PROC_FIFO_PATH);
+
+    /* Destroy shared synchronization object */
+
+    pthread_mutex_destroy(&shared->mutex);
+
+    printf("Sysmon terminated.\n");
+}
+
 int main(void)
 {
     int fds[2];
@@ -250,6 +315,26 @@ int main(void)
         {proc_fd, SENSOR_PROC, &shared}
     };
 
+    struct sigaction sa;
+
+    memset(&sa, 0, sizeof(sa));
+
+    sa.sa_handler = signal_handler;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = 0;
+
+    if (sigaction(SIGINT, &sa, NULL) == -1)
+    {
+        perror("sigaction SIGINT");
+        return 1;
+    }
+
+    if (sigaction(SIGTERM, &sa, NULL) == -1)
+    {
+        perror("sigaction SIGTERM");
+        return 1;
+    }
+
     pthread_t threads[3];
 
     /* Create reader threads */
@@ -267,7 +352,7 @@ int main(void)
 
     /* Main thread prints the latest sensor data */
 
-    while (1)
+    while (!stop_requested)
     {
         MemData mem;
         CpuData cpu;
@@ -293,7 +378,8 @@ int main(void)
 
         sleep(1);
     }
-    
 
-	return 0;
+    cleanup(mem_pid, cpu_pid, proc_pid, threads, &shared);
+
+    return 0;
 }
