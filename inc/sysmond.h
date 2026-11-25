@@ -13,7 +13,7 @@ extern "C" {
 
 #include <sysmon_ipc.h>
 
-void signal_handler(int signum);
+void signal_handler();
 int print_system_info(MemData *mem_info, CpuData *cpu_info, ProcData *proc_info);
 pid_t spawn_sensor(const char *path, const char *fifo_path, int *fd);
 void anonymous_pipe(int fds1);

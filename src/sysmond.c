@@ -16,7 +16,7 @@
 
 static volatile sig_atomic_t stop_requested = 0;
 
-void signal_handler(int signum)
+void signal_handler()
 {
     stop_requested = 1;
 }
