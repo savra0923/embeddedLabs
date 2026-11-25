@@ -5,6 +5,7 @@
 #include <sys/stat.h>
 #include <stddef.h>
 #include <sys/wait.h>
+#include <poll.h>
 #include <fcntl.h>
 #include <sysmon_ipc.h>
 //#include "mem_sensor.h"
@@ -79,71 +80,256 @@ int anonymous_pipe(int fds1)
     return 0;
 }
 
+int read_memory_line(int fd, char *buffer, size_t size)
+{
+    size_t total = 0;
 
+    while (total < size - 1)
+    {
+        char c;
+        ssize_t bytes = read(fd, &c, 1);
+
+        if (bytes == -1)
+        {
+            if (errno == EINTR)
+                continue;
+
+            return -1;
+        }
+
+        if (bytes == 0)
+            return total == 0 ? 0 : -1;
+
+        if (c == '\n')
+            break;
+
+        buffer[total++] = c;
+    }
+
+    buffer[total] = '\0';
+
+    return 1;
+}
+
+int read_full(int fd, void *buffer, size_t size)
+{
+    size_t total = 0;
+    char *ptr = buffer;
+
+    while (total < size)
+    {
+        ssize_t bytes = read(fd, ptr + total, size - total);
+
+        if (bytes == -1)
+        {
+            if (errno == EINTR)
+                continue;
+
+            return -1;
+        }
+
+        if (bytes == 0)
+            return total == 0 ? 0 : -1;
+
+        total += bytes;
+    }
+
+    return 1;
+}
 
 int main(void)
 {
     int fds[2];
-    pid_t pid;
 
-    pipe(fds);
-    pid = fork();
-
-    if (pid == 0)  /* Child */
+    if (pipe(fds) == -1)
     {
-        close(fds[0]);  // Child only writes
+        perror("pipe");
+        return 1;
+    }
+
+    pid_t mem_pid = fork();
+
+    if (mem_pid == -1)
+    {
+        perror("fork");
+        return 1;
+    }
+
+    if (mem_pid == 0)
+    {
+        close(fds[0]);
 
         anonymous_pipe(fds[1]);
     }
-    else /* Parent */
+
+    /* Parent process */
+
+    close(fds[1]);
+
+    int cpu_fd;
+    pid_t cpu_pid = spawn_sensor(
+        "./bin/cpu_sensor", CPU_FIFO_PATH, &cpu_fd);
+
+    if (cpu_pid == -1)
+        return 1;
+
+    int proc_fd;
+    pid_t proc_pid = spawn_sensor(
+        "./bin/proc_sensor", PROC_FIFO_PATH, &proc_fd);
+
+    if (proc_pid == -1)
+        return 1;
+
+    /* Initialize poll descriptors */
+
+    struct pollfd pfds[3];
+
+    pfds[0].fd = fds[0];
+    pfds[0].events = POLLIN;
+
+    pfds[1].fd = cpu_fd;
+    pfds[1].events = POLLIN;
+
+    pfds[2].fd = proc_fd;
+    pfds[2].events = POLLIN;
+
+    /* Store the latest sensor readings */
+
+    MemData mem_data = {0};
+    CpuData cpu_data = {0};
+    ProcData proc_data = {0};
+
+    int mem_valid = 0;
+    int cpu_valid = 0;
+    int proc_valid = 0;
+
+    char buffer[1024];
+
+    while (1)
     {
-        close(fds[1]);  // Parent only reads
+        int ret = poll(pfds, 3, -1);
 
-        if (mkfifo(CPU_FIFO_PATH, 0666) == -1)
+        if (ret == -1)
         {
-            if (errno != EEXIST)
-                perror("mkfifo");
+            if (errno == EINTR)
+                continue;
+
+            perror("poll");
+            break;
         }
 
-        int cpu_fd;
-        pid_t cpu_pid = spawn_sensor("./bin/cpu_sensor", CPU_FIFO_PATH, &cpu_fd);
+        int updated = 0;
 
-        int proc_fd;
-        pid_t proc_pid = spawn_sensor("./bin/proc_sensor", PROC_FIFO_PATH, &proc_fd);
+        /* Memory sensor */
 
-        FILE *stream = fdopen(fds[0], "r");
-
-        if (stream == NULL)
+        if (pfds[0].revents & POLLIN)
         {
-            perror("fdopen");
-            return 1;
+            int result = read_memory_line(
+                pfds[0].fd, buffer, sizeof(buffer));
+
+            if (result == 1)
+            {
+                if (sscanf(buffer, "%ld %ld %ld %ld %ld",
+                           &mem_data.mem_total,
+                           &mem_data.mem_free,
+                           &mem_data.mem_avail,
+                           &mem_data.swap_total,
+                           &mem_data.swap_free) == 5)
+                {
+                    mem_valid = 1;
+                    updated = 1;
+                }
+                else
+                {
+                    fprintf(stderr, "Invalid memory data\n");
+                }
+            }
+            else
+            {
+                printf("Memory sensor disconnected\n");
+                close(pfds[0].fd);
+                pfds[0].fd = -1;
+            }
         }
 
-        char buffer[1024];
+        /* CPU sensor */
 
-        while (fgets(buffer, sizeof(buffer), stream) != NULL) 
+        if (pfds[1].revents & POLLIN)
         {
-            MemData mem_data;
-            CpuData cpu_data;
-            ProcData proc_data;
+            int result = read_full(
+                pfds[1].fd, &cpu_data, sizeof(cpu_data));
 
-            sscanf(buffer, "%ld %ld %ld %ld %ld", &mem_data.mem_total, &mem_data.mem_free,
-                &mem_data.mem_avail, &mem_data.swap_total, &mem_data.swap_free);
-
-            read(cpu_fd, &cpu_data, sizeof(cpu_data));
-            read(proc_fd, &proc_data, sizeof(proc_data));
-
-            print_system_info(&mem_data, &cpu_data, &proc_data);
+            if (result == 1)
+            {
+                cpu_valid = 1;
+                updated = 1;
+            }
+            else
+            {
+                printf("CPU sensor disconnected\n");
+                close(pfds[1].fd);
+                pfds[1].fd = -1;
+            }
         }
 
-        close(proc_fd);
-        close(cpu_fd);
-        fclose(stream);
-        waitpid(pid, NULL, 0);
-        waitpid(cpu_pid, NULL, 0);
-        waitpid(proc_pid, NULL, 0);
+        /* Process sensor */
+
+        if (pfds[2].revents & POLLIN)
+        {
+            int result = read_full(
+                pfds[2].fd, &proc_data, sizeof(proc_data));
+
+            if (result == 1)
+            {
+                proc_valid = 1;
+                updated = 1;
+            }
+            else
+            {
+                printf("Process sensor disconnected\n");
+                close(pfds[2].fd);
+                pfds[2].fd = -1;
+            }
+        }
+
+        /* Handle disconnected writers */
+
+        for (int i = 0; i < 3; i++)
+        {
+            if (pfds[i].fd != -1 &&
+                (pfds[i].revents & (POLLERR | POLLNVAL)))
+            {
+                fprintf(stderr, "Sensor FD %d error\n", i);
+                close(pfds[i].fd);
+                pfds[i].fd = -1;
+            }
+        }
+
+        /* Print when we have at least one update */
+
+        if (updated && mem_valid && cpu_valid && proc_valid)
+        {
+            print_system_info(
+                &mem_data,
+                &cpu_data,
+                &proc_data);
+        }
+
+        /* Stop if all sensors have disconnected */
+
+        if (pfds[0].fd == -1 &&
+            pfds[1].fd == -1 &&
+            pfds[2].fd == -1)
+        {
+            break;
+        }
     }
-    
 
-	return 0;
+    close(fds[0]);
+
+    waitpid(mem_pid, NULL, 0);
+    waitpid(cpu_pid, NULL, 0);
+    waitpid(proc_pid, NULL, 0);
+
+    return 0;
 }

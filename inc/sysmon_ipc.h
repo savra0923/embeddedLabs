@@ -3,6 +3,7 @@
 
 #define CPU_FIFO_PATH  "/tmp/sysmon_cpu.fifo"
 #define PROC_FIFO_PATH "/tmp/sysmon_proc.fifo"
+#define INTERVAL 5
 
 typedef struct {
     long mem_total;
