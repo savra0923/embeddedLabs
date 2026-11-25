@@ -1,5 +1,5 @@
 CC ?= gcc
-CFLAGS = -Wall -Wextra -g -Iinc
+CFLAGS = -Wall -Wextra -Werror -g -Iinc
 LDLIBS = -lpthread -lrt
 
 BIN_DIR = bin
