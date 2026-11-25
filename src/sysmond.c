@@ -13,8 +13,32 @@
 //#include "mem_sensor.h"
 #include "cpu_sensor.h"
 #include "proc_sensor.h"
+#include "sysmond.h"
 
 static volatile sig_atomic_t stop_requested = 0;
+static SensorLifecycle sensors[LIFE_COUNT] = {
+    [LIFE_MEM] = {
+        .name = "mem_sensor",
+        .pid = -1,
+        .read_fd = -1,
+        .restart_count = 0,
+        .active = false
+    },
+    [LIFE_CPU] = {
+        .name = "cpu_sensor",
+        .pid = -1,
+        .read_fd = -1,
+        .restart_count = 0,
+        .active = false
+    },
+    [LIFE_PROC] = {
+        .name = "proc_sensor",
+        .pid = -1,
+        .read_fd = -1,
+        .restart_count = 0,
+        .active = false
+    }
+};
 
 void signal_handler()
 {
@@ -214,105 +238,122 @@ void reap_child(pid_t pid)
     }
 }
 
-void cleanup(pid_t mem_pid, pid_t cpu_pid, pid_t proc_pid, pthread_t threads[], SharedData *shared)
+void cleanup(pthread_t threads[], SharedData *shared)
 {
-    /* Cleanup */
-
     printf("\nShutting down sysmon...\n");
 
-    /* Terminate sensors */
-
-    if (mem_pid > 0)
-        kill(mem_pid, SIGTERM);
-
-    if (cpu_pid > 0)
-        kill(cpu_pid, SIGTERM);
-
-    if (proc_pid > 0)
-        kill(proc_pid, SIGTERM);
-
-    /* Reap child processes */
-
-    reap_child(mem_pid);
-    reap_child(cpu_pid);
-    reap_child(proc_pid);
-
-    /* Reader threads should now receive EOF and exit */
-
-    for (int i = 0; i < 3; i++)
-    {
-        pthread_join(threads[i], NULL);
+    for (int i = 0; i < LIFE_COUNT; i++) {
+        if (sensors[i].active && sensors[i].pid > 0)
+            kill(sensors[i].pid, SIGTERM);
     }
 
-    /* Remove named FIFOs */
+    for (int i = 0; i < LIFE_COUNT; i++) {
+        if (sensors[i].active && sensors[i].pid > 0) {
+            reap_child(sensors[i].pid);
+            sensor_stopped((SensorLifecycleType)i);
+        }
+    }
+
+    for (int i = 0; i < LIFE_COUNT; i++)
+        pthread_join(threads[i], NULL);
 
     unlink(CPU_FIFO_PATH);
     unlink(PROC_FIFO_PATH);
-
-    /* Destroy shared synchronization object */
 
     pthread_mutex_destroy(&shared->mutex);
 
     printf("Sysmon terminated.\n");
 }
 
+static void sensor_started(SensorLifecycleType type, pid_t pid, int read_fd)
+{
+    SensorLifecycle *sensor = &sensors[type];
+
+    sensor->pid = pid;
+    sensor->read_fd = read_fd;
+    sensor->active = true;
+
+    printf("%s started: PID=%d, FD=%d\n", sensor->name, pid, read_fd);
+}
+
+static void sensor_stopped(SensorLifecycleType type)
+{
+    SensorLifecycle *sensor = &sensors[type];
+
+    sensor->pid = -1;
+    sensor->read_fd = -1;
+    sensor->active = false;
+
+    printf("%s stopped\n", sensor->name);
+}
+
+// static void sensor_restarted(SensorLifecycleType type)
+// {
+//     SensorLifecycle *sensor = &sensors[type];
+
+//     sensor->restart_count++;
+
+//     printf("%s restart count: %u\n", sensor->name, sensor->restart_count);
+// }
+
 int main(void)
 {
     int fds[2];
 
-    if (pipe(fds) == -1)
-    {
+    if (pipe(fds) == -1) {
         perror("pipe");
         return 1;
     }
 
     pid_t mem_pid = fork();
 
-    if (mem_pid == -1)
-    {
+    if (mem_pid == -1) {
         perror("fork");
+        close(fds[0]);
+        close(fds[1]);
         return 1;
     }
 
-    if (mem_pid == 0)
-    {
+    if (mem_pid == 0) {
         close(fds[0]);
-
         anonymous_pipe(fds[1]);
         _exit(EXIT_FAILURE);
     }
 
-    /* Parent process */
-
+    /* Parent */
     close(fds[1]);
 
     int cpu_fd;
     pid_t cpu_pid = spawn_sensor(
         "./bin/cpu_sensor", CPU_FIFO_PATH, &cpu_fd);
 
-    if (cpu_pid == -1)
+    if (cpu_pid == -1) {
+        /* Startup failure handling will be improved in the next step. */
         return 1;
+    }
 
     int proc_fd;
     pid_t proc_pid = spawn_sensor(
         "./bin/proc_sensor", PROC_FIFO_PATH, &proc_fd);
 
-    if (proc_pid == -1)
+    if (proc_pid == -1) {
         return 1;
+    }
+
+    sensor_started(LIFE_MEM, mem_pid, fds[0]);
+    sensor_started(LIFE_CPU, cpu_pid, cpu_fd);
+    sensor_started(LIFE_PROC, proc_pid, proc_fd);
 
     /* Initialize shared data */
-
     SharedData shared = {0};
 
     pthread_mutex_init(&shared.mutex, NULL);
 
     /* Prepare thread arguments */
-
-    ThreadArgs args[3] =
-    {
-        {fds[0], SENSOR_MEM,  &shared},
-        {cpu_fd, SENSOR_CPU,  &shared},
-        {proc_fd, SENSOR_PROC, &shared}
+    ThreadArgs args[LIFE_COUNT] = {
+        {sensors[LIFE_MEM].read_fd, SENSOR_MEM, &shared},
+        {sensors[LIFE_CPU].read_fd, SENSOR_CPU, &shared},
+        {sensors[LIFE_PROC].read_fd, SENSOR_PROC, &shared}
     };
 
     struct sigaction sa;
@@ -335,11 +376,11 @@ int main(void)
         return 1;
     }
 
-    pthread_t threads[3];
+    pthread_t threads[LIFE_COUNT];
 
     /* Create reader threads */
 
-    for (int i = 0; i < 3; i++)
+    for (int i = 0; i < LIFE_COUNT; i++)
     {
         int ret = pthread_create(&threads[i], NULL, reader_thread, &args[i]);
 
@@ -379,7 +420,7 @@ int main(void)
         sleep(1);
     }
 
-    cleanup(mem_pid, cpu_pid, proc_pid, threads, &shared);
+    cleanup(threads, &shared);
 
     return 0;
 }
